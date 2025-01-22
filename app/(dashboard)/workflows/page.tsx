@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, InboxIcon } from "lucide-react";
 import React, { Suspense } from "react";
 import CreateWorkflowDialog from "./_components/CreateWorkflowDialog";
+import WorkflowCard from "./_components/WorkflowCard";
 
 const page = () => {
   return (
@@ -57,7 +58,11 @@ async function UserWorkflows() {
       );
     }
 
-    return <pre>{JSON.stringify(workflowes,null,4)}</pre>;
+    return (<div className="grid grid-col-1 gap-4">
+{workflowes.map((workflow)=>(
+  <WorkflowCard key={workflow.id} workflow={workflow}/>
+))}
+    </div>);
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "An unexpected error occurred";
