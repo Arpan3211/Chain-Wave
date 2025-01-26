@@ -15,7 +15,7 @@ const page = () => {
           <h1 className="text-3xl font-bold">Work Flows</h1>
           <p className="text-muted-foreground"> Manage Your workflowes</p>
         </div>
-        <CreateWorkflowDialog/>
+        <CreateWorkflowDialog />
       </div>
       <div className="h-full py-6">
         <Suspense fallback={<UserWorkflowsSkeleton />}>
@@ -58,11 +58,13 @@ async function UserWorkflows() {
       );
     }
 
-    return (<div className="grid grid-col-1 gap-4">
-{workflowes.map((workflow)=>(
-  <WorkflowCard key={workflow.id} workflow={workflow}/>
-))}
-    </div>);
+    return (
+      <div className="grid grid-col-1 gap-4">
+        {workflowes.map((workflow) => (
+          <WorkflowCard key={workflow.id} workflow={workflow} />
+        ))}
+      </div>
+    );
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "An unexpected error occurred";

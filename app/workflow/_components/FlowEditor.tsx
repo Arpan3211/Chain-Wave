@@ -3,17 +3,149 @@
 import { CreateFlowNode } from "@/lib/workflow/createFlowNode";
 import { TaskType } from "@/types/task";
 import { Workflow } from "@prisma/client";
-import { Background, BackgroundVariant, Controls, ReactFlow, useEdgesState, useNodesState } from "@xyflow/react";
+import {
+  addEdge,
+  Background,
+  BackgroundVariant,
+  Connection,
+  Controls,
+  Edge,
+  getOutgoers,
+  ReactFlow,
+  useEdgesState,
+  useNodesState,
+  useReactFlow,
+} from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import NodeComponent from "./nodes/NodeComponent";
+import React, { useCallback, useEffect } from "react";
+import { AppNode } from "@/types/appNode";
+import { DeletableEdge } from "./edges/DeletableEdge";
+import { TaskRegistry } from "@/lib/workflow/task/registry";
 
 const nodeTypes = {
-    FlowScrapeNode:NodeComponent,
-}
+  FlowScrapeNode: NodeComponent,
+};
+
+const edgeTypes = {
+  default: DeletableEdge,
+};
+const snapGrid: [number, number] = [50, 50];
+const fitViewOptions = { padding: 1 };
 
 const FlowEditor = ({ workflow }: { workflow: Workflow }) => {
-  const [nodes, setNodes, onNodeChange] = useNodesState([CreateFlowNode(TaskType.LAUNCH_BROWSER)]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodeChange] = useNodesState<AppNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const { setViewport, screenToFlowPosition, updateNodeData } = useReactFlow();
+
+  useEffect(() => {
+    try {
+      const flow = JSON.parse(workflow.definition); // Parse JSON
+      if (!flow) return;
+      setNodes(flow.nodes || []);
+      setEdges(flow.edges || []);
+      if (!flow.viewport) return;
+      const { x = 0, y = 0, zoom = 1 } = flow.viewport;
+      setViewport({ x, y, zoom });
+    } catch (error) {
+      console.error("Error parsing workflow definition:", error);
+    }
+  }, [workflow, setEdges, setNodes, setViewport]); // Remove undefined dependencies
+
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      const taskType = event.dataTransfer.getData("application/reactflow");
+      if (typeof taskType === undefined || !taskType) return;
+
+      const position = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      const newNode = CreateFlowNode(taskType as TaskType, position);
+      setNodes((nds) => nds.concat(newNode));
+    },
+    [screenToFlowPosition, setNodes]
+  );
+
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      setEdges((eds) => addEdge({ ...connection, animated: true }, eds));
+
+      if (!connection.targetHandle) {
+        console.warn("Target handle is null, skipping connection update.");
+        return;
+      }
+
+      // Find the target node
+      const targetNode = nodes.find((nd) => nd.id === connection.target);
+      if (!targetNode) {
+        console.warn("Target node not found, skipping connection update.");
+        return;
+      }
+
+      const nodeInputs = targetNode.data.inputs || {};
+
+      // Update node data using updateNodeData
+      updateNodeData(targetNode.id, {
+        inputs: {
+          ...nodeInputs,
+          [connection.targetHandle]: "", // Safely use targetHandle as a key
+        },
+      });
+    },
+    [setEdges, nodes, updateNodeData] // Include all necessary dependencies
+  );
+
+  const isValidConnection = useCallback(
+    (connection: Edge | Connection) => {
+      if (connection.source === connection.target) {
+        return false;
+      }
+
+      const source = nodes.find((node) => node.id === connection.source);
+      const target = nodes.find((node) => node.id === connection.target);
+
+      if (!source || !target) {
+        console.error("invalid connection: source or target node not found");
+        return false;
+      }
+
+      const sourceTask = TaskRegistry[source.data.type];
+      const targetTask = TaskRegistry[target.data.type];
+
+      const output = sourceTask.outputs.find(
+        (o) => o.name === connection.sourceHandle
+      );
+      const input = targetTask.inputs.find(
+        (o) => o.name === connection.targetHandle
+      );
+      if (input?.type !== output?.type) {
+        console.error("invalid connection: type mismatch");
+        return false;
+      }
+      const hasCycle = (node: AppNode, visited = new Set()) => {
+        if (visited.has(node.id)) return false;
+        visited.add(node.id);
+
+        for (const outgoer of getOutgoers(node, nodes, edges)) {
+          if (outgoer.id === connection.source) return true;
+          if (hasCycle(outgoer, visited)) return true;
+        }
+      };
+
+      const detectedCycle = hasCycle(target);
+      return !detectedCycle;
+    },
+    [nodes, edges]
+  );
+
   return (
     <main className="h-full w-full">
       <ReactFlow
@@ -22,9 +154,18 @@ const FlowEditor = ({ workflow }: { workflow: Workflow }) => {
         onEdgesChange={onEdgesChange}
         onNodesChange={onNodeChange}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        snapGrid={snapGrid}
+        fitViewOptions={fitViewOptions}
+        snapToGrid
+        fitView
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onConnect={onConnect}
+        isValidConnection={isValidConnection}
       >
-        <Controls position="top-left"/>
-        <Background variant={BackgroundVariant.Dots} gap={12} size={1}/>
+        <Controls position="top-left" fitViewOptions={fitViewOptions} />
+        <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
       </ReactFlow>
     </main>
   );
