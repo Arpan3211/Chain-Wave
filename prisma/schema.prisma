@@ -18,9 +18,12 @@ model Workflow {
   creditsCost    Int      @default(0)
   status         String
 
+  cron           String?
+
   lastRunAt      DateTime?
   lastRunId      String?
   lastRunStatus  String?
+  nextRunAt      DateTime?
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -82,4 +85,14 @@ model ExecutionLog {  // Fixed here
 model UserBalance {
   userId String @id
   credits Int @default(0)
+}
+
+model Credential {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  value     String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, name])
 }
